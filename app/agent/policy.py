@@ -136,3 +136,4 @@ def compile_policy(text: str) -> CompiledPolicy:
         rules=final_rules,
         warnings=warnings,
     )
+

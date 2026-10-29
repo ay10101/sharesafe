@@ -52,3 +52,4 @@ def test_precached_demo_policy_hit(monkeypatch):
     assert res is not None
     assert res.cached is True
     assert "gpu_safety" in res.content
+

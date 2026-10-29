@@ -28,3 +28,4 @@ class ResourceRules(BaseModel):
     max_consecutive_bookings: Optional[int] = Field(None, ge=1, description="Max consecutive bookings permitted by a user/team")
     recent_usage_cap_hours_30d: Optional[float] = Field(None, ge=0, description="Max booking hours allowed in a rolling 30-day window")
     requires_inspection_within_days: Optional[int] = Field(None, ge=1, description="Days allowed between physical safety inspections")
+

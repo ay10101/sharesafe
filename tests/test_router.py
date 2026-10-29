@@ -48,3 +48,4 @@ def test_api_compile_policy():
     data = resp.json()
     assert data["rules"]["min_year"] == 3
     assert "gpu_safety" in data["rules"]["required_training"]
+

@@ -86,3 +86,4 @@ def execute(actor: Actor, action: str, args: dict) -> dict:
         "actor_id": actor.id,
         "args": args,
     }
+

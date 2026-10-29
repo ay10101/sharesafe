@@ -118,3 +118,4 @@ class EvidencePacket:
 class CompiledPolicy:
     rules: dict                       # must validate against RESOURCE_RULES_SCHEMA
     warnings: list[str] = field(default_factory=list)
+

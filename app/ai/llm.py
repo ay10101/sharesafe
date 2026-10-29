@@ -286,3 +286,4 @@ def complete(
             "error": str(exc),
         })
         return None
+

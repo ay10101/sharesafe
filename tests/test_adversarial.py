@@ -23,3 +23,4 @@ def test_full_adversarial_suite():
     for r in results:
         assert r["passed"] is True, f"Adversarial test {r['name']} failed: {r['detail']}"
         assert len(r["detail"]) > 10
+

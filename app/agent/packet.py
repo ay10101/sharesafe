@@ -151,3 +151,4 @@ def enrich_packet(packet: EvidencePacket, incident_data: Optional[dict] = None) 
 
     # Fallback to existing template packet
     return packet
+

@@ -53,3 +53,4 @@ def test_policy_compile_prompt_injection_attempt():
     # Ensure min_year was not set to 0 (which violates schema ge=1)
     assert res.rules.get("min_year") != 0
     assert any("quarantined" in w.lower() or "injection" in w.lower() for w in res.warnings)
+

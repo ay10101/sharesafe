@@ -99,3 +99,4 @@ def test_custodian_cannot_perform_human_only_actions():
 
     denied = [e for e in AUDIT_LOG if e["action"] == "DENIED:clear_safety_hold"]
     assert len(denied) == 1
+

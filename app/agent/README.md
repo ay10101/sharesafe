@@ -109,3 +109,4 @@ This module provides the Bounded Autonomy AI agent layer, Evidence Packet genera
 }
 ```
 *Note: Compiled rules must be explicitly approved by the resource owner before saving.*
+
