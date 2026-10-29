@@ -16,7 +16,7 @@ import pytest
 from starlette.testclient import TestClient
 
 from app.auth.jwt import create_access_token
-from app.core.audit import SQLiteAuditStore, set_audit_store, verify_chain
+from app.core.audit import InMemoryAuditStore, SQLiteAuditStore, set_audit_store, verify_chain
 from app.db.schema import SCHEMA_SQL
 from app.db.session import init_db, get_connection
 from fastapi import FastAPI
@@ -34,28 +34,30 @@ def test_client(monkeypatch):
 
     # Seed basic records
     conn = get_connection(db_path)
-    now_iso = datetime.now(timezone.utc).isoformat()
-    conn.execute(
-        """
-        INSERT INTO users (id, name, email, role, kind)
-        VALUES
-            ('user:maya', 'Maya Lin', 'maya@campus.edu', 'borrower', 'human'),
-            ('user:marcus', 'Marcus Vance', 'marcus@campus.edu', 'owner', 'human'),
-            ('user:dr_thorne', 'Dr. Aris Thorne', 'thorne@campus.edu', 'inspector', 'human'),
-            ('user:sarah', 'Sarah Admin', 'admin@campus.edu', 'admin', 'human'),
-            ('agent:custodian', 'Custodian Agent', 'agent@sharesafe.ai', 'agent', 'agent');
-        """
-    )
-    conn.execute(
-        """
-        INSERT INTO resources (id, name, category, location, owner_id, status, readiness_state, rules_json, created_at)
-        VALUES
-            ('res-gpu-01', 'NVIDIA RTX 4090 Workstation', 'computing', 'Turing Hall 402', 'user:marcus', 'available', 'ready', '{}', ?);
-        """,
-        (now_iso,),
-    )
-    conn.commit()
-    conn.close()
+    try:
+        now_iso = datetime.now(timezone.utc).isoformat()
+        conn.execute(
+            """
+            INSERT INTO users (id, name, email, role, kind)
+            VALUES
+                ('user:maya', 'Maya Lin', 'maya@campus.edu', 'borrower', 'human'),
+                ('user:marcus', 'Marcus Vance', 'marcus@campus.edu', 'owner', 'human'),
+                ('user:dr_thorne', 'Dr. Aris Thorne', 'thorne@campus.edu', 'inspector', 'human'),
+                ('user:sarah', 'Sarah Admin', 'admin@campus.edu', 'admin', 'human'),
+                ('agent:custodian', 'Custodian Agent', 'agent@sharesafe.ai', 'agent', 'agent');
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO resources (id, name, category, location, owner_id, status, readiness_state, rules_json, created_at)
+            VALUES
+                ('res-gpu-01', 'NVIDIA RTX 4090 Workstation', 'computing', 'Turing Hall 402', 'user:marcus', 'available', 'ready', '{}', ?);
+            """,
+            (now_iso,),
+        )
+        conn.commit()
+    finally:
+        conn.close()
 
     set_audit_store(SQLiteAuditStore(db_path=db_path))
 
@@ -66,9 +68,14 @@ def test_client(monkeypatch):
     app.include_router(notifications_router)
 
     client = TestClient(app)
-    yield client
-
-    db_path.unlink(missing_ok=True)
+    try:
+        yield client
+    finally:
+        set_audit_store(InMemoryAuditStore())
+        try:
+            db_path.unlink(missing_ok=True)
+        except Exception:
+            pass
 
 
 def test_safety_incident_api_and_hold_flow(test_client):
@@ -202,4 +209,31 @@ def test_get_incident_evidence_packet_endpoint(test_client):
     assert packet["resource_id"] == "res-gpu-01"
     assert "Thermal cutoff" in packet["reported_description"]
     assert packet["summary"] != ""
+
+
+def test_incident_reporter_id_integration(test_client):
+    """Verify that authenticated reporter_id is correctly recorded and agent hook executes without NameError."""
+    token = create_access_token(user_id="user:maya", role="borrower", name="Maya Lin")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    res = test_client.post(
+        "/api/incidents",
+        json={"type": "damage", "description": "Spindle bearing worn and vibrating under load", "resource_id": "res-gpu-01"},
+        headers=headers,
+    )
+    assert res.status_code == 201
+    data = res.json()
+    inc_id = data["incident_id"]
+
+    # Verify incident record in database has reporter_id = user:maya
+    from app.db.session import get_connection
+    conn = get_connection()
+    try:
+        row = conn.execute("SELECT * FROM incidents WHERE id = ?", (inc_id,)).fetchone()
+        assert row is not None
+        assert row["reporter_id"] == "user:maya"
+        assert row["incident_type"] == "damage"
+    finally:
+        conn.close()
+
 

@@ -35,16 +35,25 @@ def audit_store(request):
     if request.param == "in_memory":
         store = InMemoryAuditStore()
         set_audit_store(store)
-        yield store
-        store.clear()
+        try:
+            yield store
+        finally:
+            store.clear()
+            set_audit_store(InMemoryAuditStore())
     else:
         with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
             temp_db = Path(f.name)
         init_db(temp_db)
         store = SQLiteAuditStore(db_path=temp_db)
         set_audit_store(store)
-        yield store
-        temp_db.unlink(missing_ok=True)
+        try:
+            yield store
+        finally:
+            set_audit_store(InMemoryAuditStore())
+            try:
+                temp_db.unlink(missing_ok=True)
+            except Exception:
+                pass
 
 
 def test_1_empty_chain(audit_store):

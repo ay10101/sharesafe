@@ -31,7 +31,7 @@ from fastapi import FastAPI
 
 from app.auth.jwt import create_access_token
 from app.contracts import Readiness
-from app.core.audit import SQLiteAuditStore, get_audit_trail, set_audit_store, verify_chain
+from app.core.audit import InMemoryAuditStore, SQLiteAuditStore, get_audit_trail, set_audit_store, verify_chain
 from app.core.holds import clear_safety_hold_record, place_safety_hold
 from app.core.readiness import evaluate_readiness
 from app.db.schema import SCHEMA_SQL
@@ -50,28 +50,30 @@ def demo_app(monkeypatch):
     monkeypatch.setenv("DATABASE_PATH", str(db_path))
 
     conn = get_connection(db_path)
-    now_iso = datetime.now(timezone.utc).isoformat()
-    conn.execute(
-        """
-        INSERT INTO users (id, name, email, role, kind, year, training)
-        VALUES
-            ('user:maya', 'Maya Lin', 'maya@campus.edu', 'borrower', 'human', 3, '["gpu_safety"]'),
-            ('user:marcus', 'Marcus Vance', 'marcus@campus.edu', 'owner', 'human', 4, '[]'),
-            ('user:dr_thorne', 'Dr. Aris Thorne', 'thorne@campus.edu', 'inspector', 'human', 5, '[]'),
-            ('user:david', 'David Kim', 'david@campus.edu', 'borrower', 'human', 2, '[]'),
-            ('agent:custodian', 'Custodian Agent', 'agent@sharesafe.ai', 'agent', 'agent', 0, '[]');
-        """
-    )
-    conn.execute(
-        """
-        INSERT INTO resources (id, name, category, location, owner_id, status, readiness_state, rules_json, created_at)
-        VALUES
-            ('res-gpu-01', 'NVIDIA RTX 4090 Workstation Pod', 'computing', 'Turing Hall 402', 'user:marcus', 'available', 'ready', '{"min_year": 3, "required_training": ["gpu_safety"], "max_hours_per_booking": 4}', ?);
-        """,
-        (now_iso,),
-    )
-    conn.commit()
-    conn.close()
+    try:
+        now_iso = datetime.now(timezone.utc).isoformat()
+        conn.execute(
+            """
+            INSERT INTO users (id, name, email, role, kind, year, training)
+            VALUES
+                ('user:maya', 'Maya Lin', 'maya@campus.edu', 'borrower', 'human', 3, '["gpu_safety"]'),
+                ('user:marcus', 'Marcus Vance', 'marcus@campus.edu', 'owner', 'human', 4, '[]'),
+                ('user:dr_thorne', 'Dr. Aris Thorne', 'thorne@campus.edu', 'inspector', 'human', 5, '[]'),
+                ('user:david', 'David Kim', 'david@campus.edu', 'borrower', 'human', 2, '[]'),
+                ('agent:custodian', 'Custodian Agent', 'agent@sharesafe.ai', 'agent', 'agent', 0, '[]');
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO resources (id, name, category, location, owner_id, status, readiness_state, rules_json, created_at)
+            VALUES
+                ('res-gpu-01', 'NVIDIA RTX 4090 Workstation Pod', 'computing', 'Turing Hall 402', 'user:marcus', 'available', 'ready', '{"min_year": 3, "required_training": ["gpu_safety"], "max_hours_per_booking": 4}', ?);
+            """,
+            (now_iso,),
+        )
+        conn.commit()
+    finally:
+        conn.close()
 
     set_audit_store(SQLiteAuditStore(db_path=db_path))
 
@@ -82,12 +84,14 @@ def demo_app(monkeypatch):
     app.include_router(notifications_router)
 
     client = TestClient(app)
-    yield client, db_path
-
     try:
-        db_path.unlink(missing_ok=True)
-    except Exception:
-        pass
+        yield client, db_path
+    finally:
+        set_audit_store(InMemoryAuditStore())
+        try:
+            db_path.unlink(missing_ok=True)
+        except Exception:
+            pass
 
 
 def test_complete_hero_demo_journey(demo_app):

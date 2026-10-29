@@ -288,3 +288,63 @@ def test_on_incident_hook():
     assert result.packet.resource_id == "res-laser-cutter"
 
 
+def test_historical_incident_query_column_alignment(tmp_path, monkeypatch):
+    """Verify that querying historical incidents from SQLite correctly maps resolution_note to resolution."""
+    test_db = tmp_path / "test_hist_query.db"
+    from app.db.session import init_db, get_connection
+    init_db(test_db)
+    monkeypatch.setenv("DATABASE_PATH", str(test_db))
+
+    conn = get_connection(test_db)
+    try:
+        conn.execute(
+            """
+            INSERT INTO users (id, name, email, role, kind)
+            VALUES ('u-test-1', 'Test User', 'test@campus.edu', 'borrower', 'human');
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO resources (id, name, category, location, owner_id, status, readiness_state, rules_json, created_at)
+            VALUES ('res-drill', 'CNC Drill', 'machining', 'Bay 4', 'u-test-1', 'available', 'ready', '{}', '2026-10-01');
+            """
+        )
+        # Prior incident with resolution_note column
+        conn.execute(
+            """
+            INSERT INTO incidents (id, resource_id, booking_id, reporter_id, description, incident_type, status, resolution_note, created_at)
+            VALUES ('inc-past-01', 'res-drill', NULL, 'u-test-1', 'Collet slipped during milling', 'damage', 'resolved', 'Replaced collet with hardened steel', '2026-10-15');
+            """
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    actor = Actor(id="agent:custodian", name="Custodian Agent", role="agent")
+    test_auth = SimpleAuthority()
+
+    current_inc = {
+        "id": "inc-curr-02",
+        "resource_id": "res-drill",
+        "incident_type": "damage",
+        "description": "Collet loose again",
+        "severity": "medium",
+    }
+
+    result = handle_incident(
+        incident_id="inc-curr-02",
+        actor=actor,
+        incident=current_inc,
+        authority=test_auth,
+        history_service=None,  # triggers SQLite query fallback
+    )
+
+    assert result.processed is True
+    assert result.packet is not None
+    assert len(result.packet.historical_incidents) == 1
+    hist = result.packet.historical_incidents[0]
+    assert hist.incident_id == "inc-past-01"
+    assert hist.resolution == "Replaced collet with hardened steel"
+
+
+

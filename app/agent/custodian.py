@@ -284,10 +284,12 @@ def handle_incident(
             try:
                 from app.db.session import get_connection
                 conn = get_connection()
-                row = conn.execute("SELECT * FROM incidents WHERE id = ?", (incident_id,)).fetchone()
-                conn.close()
-                if row:
-                    incident = dict(row)
+                try:
+                    row = conn.execute("SELECT * FROM incidents WHERE id = ?", (incident_id,)).fetchone()
+                    if row:
+                        incident = dict(row)
+                finally:
+                    conn.close()
             except Exception:
                 pass
 
@@ -378,13 +380,15 @@ def handle_incident(
         try:
             from app.db.session import get_connection
             conn = get_connection()
-            rows = conn.execute(
-                "SELECT id as request_id, resource_id, user_id as requester_id, start as start_date, end as end_date, status FROM bookings WHERE resource_id = ? AND status IN ('requested', 'approved', 'waitlisted')",
-                (resource_id,),
-            ).fetchall()
-            conn.close()
-            for r in rows:
-                upcoming_bookings.append(UpcomingBooking(**dict(r)))
+            try:
+                rows = conn.execute(
+                    "SELECT id as request_id, resource_id, user_id as requester_id, start as start_date, end as end_date, status FROM bookings WHERE resource_id = ? AND status IN ('requested', 'approved', 'waitlisted')",
+                    (resource_id,),
+                ).fetchall()
+                for r in rows:
+                    upcoming_bookings.append(UpcomingBooking(**dict(r)))
+            finally:
+                conn.close()
         except Exception:
             pass
 
@@ -399,13 +403,15 @@ def handle_incident(
         try:
             from app.db.session import get_connection
             conn = get_connection()
-            rows = conn.execute(
-                "SELECT id as incident_id, resource_id, incident_type, description, 'medium' as severity, created_at, resolution_notes as resolution FROM incidents WHERE resource_id = ? AND id != ? ORDER BY created_at DESC",
-                (resource_id, incident_id),
-            ).fetchall()
-            conn.close()
-            for r in rows:
-                historical_incidents.append(HistoricalIncident(**dict(r)))
+            try:
+                rows = conn.execute(
+                    "SELECT id as incident_id, resource_id, incident_type, description, 'medium' as severity, created_at, resolution_note as resolution FROM incidents WHERE resource_id = ? AND id != ? ORDER BY created_at DESC",
+                    (resource_id, incident_id),
+                ).fetchall()
+                for r in rows:
+                    historical_incidents.append(HistoricalIncident(**dict(r)))
+            finally:
+                conn.close()
         except Exception:
             pass
 

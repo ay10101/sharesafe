@@ -18,7 +18,7 @@ from pathlib import Path
 import pytest
 
 from app.contracts import Readiness
-from app.core.audit import SQLiteAuditStore, get_audit_trail, set_audit_store, verify_chain
+from app.core.audit import InMemoryAuditStore, SQLiteAuditStore, get_audit_trail, set_audit_store, verify_chain
 from app.core.holds import clear_safety_hold_record, override_safety_hold, place_safety_hold
 from app.core.readiness import evaluate_readiness
 from app.core.scheduler import check_overdue_bookings
@@ -34,34 +34,40 @@ def temp_db():
 
     # Populate seed resources and users into temp_db
     conn = get_connection(path)
-    now_iso = datetime.now(timezone.utc).isoformat()
-    conn.execute(
-        """
-        INSERT INTO users (id, name, email, role, kind)
-        VALUES
-            ('user:maya', 'Maya Lin', 'maya@campus.edu', 'borrower', 'human'),
-            ('user:marcus', 'Marcus Vance', 'marcus@campus.edu', 'owner', 'human'),
-            ('user:dr_thorne', 'Dr. Aris Thorne', 'thorne@campus.edu', 'inspector', 'human'),
-            ('agent:custodian', 'Custodian Agent', 'agent@sharesafe.ai', 'agent', 'agent');
-        """
-    )
-    conn.execute(
-        """
-        INSERT INTO resources (id, name, category, location, owner_id, status, readiness_state, rules_json, created_at)
-        VALUES
-            ('res-gpu-01', 'NVIDIA RTX 4090 Workstation', 'computing', 'Turing Hall 402', 'user:marcus', 'available', 'ready', '{}', ?);
-        """,
-        (now_iso,),
-    )
-    conn.commit()
-    conn.close()
+    try:
+        now_iso = datetime.now(timezone.utc).isoformat()
+        conn.execute(
+            """
+            INSERT INTO users (id, name, email, role, kind)
+            VALUES
+                ('user:maya', 'Maya Lin', 'maya@campus.edu', 'borrower', 'human'),
+                ('user:marcus', 'Marcus Vance', 'marcus@campus.edu', 'owner', 'human'),
+                ('user:dr_thorne', 'Dr. Aris Thorne', 'thorne@campus.edu', 'inspector', 'human'),
+                ('agent:custodian', 'Custodian Agent', 'agent@sharesafe.ai', 'agent', 'agent');
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO resources (id, name, category, location, owner_id, status, readiness_state, rules_json, created_at)
+            VALUES
+                ('res-gpu-01', 'NVIDIA RTX 4090 Workstation', 'computing', 'Turing Hall 402', 'user:marcus', 'available', 'ready', '{}', ?);
+            """,
+            (now_iso,),
+        )
+        conn.commit()
+    finally:
+        conn.close()
 
     # Point audit store to this temp DB
     set_audit_store(SQLiteAuditStore(db_path=path))
-
-    yield path
-
-    path.unlink(missing_ok=True)
+    try:
+        yield path
+    finally:
+        set_audit_store(InMemoryAuditStore())
+        try:
+            path.unlink(missing_ok=True)
+        except Exception:
+            pass
 
 
 def test_safety_incident_triggers_hold_and_blocks_readiness(temp_db, monkeypatch):

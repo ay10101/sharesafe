@@ -55,6 +55,7 @@ async def report_incident(
 
     now_ts = datetime.now(timezone.utc).isoformat()
     incident_id = f"inc-{uuid.uuid4().hex[:8]}"
+    reporter_id = current_user.get("id") if isinstance(current_user, dict) else getattr(current_user, "id", "anonymous")
 
     res_id = payload.resource_id
     # If booking_id provided but not resource_id, resolve from booking
@@ -86,7 +87,7 @@ async def report_incident(
                 incident_id,
                 res_id,
                 payload.booking_id,
-                current_user["id"],
+                reporter_id,
                 payload.description,
                 inc_type,
                 now_ts,
@@ -95,7 +96,7 @@ async def report_incident(
 
     # Audit event for incident reporting
     append_audit(
-        actor_id=current_user["id"],
+        actor_id=reporter_id,
         action="report_incident",
         payload={
             "incident_id": incident_id,
@@ -103,6 +104,7 @@ async def report_incident(
             "resource_id": res_id,
             "booking_id": payload.booking_id,
             "description": payload.description,
+            "reporter_id": reporter_id,
         },
     )
 
