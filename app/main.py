@@ -607,6 +607,30 @@ async def reset_demo():
     return {"status": "ok", "message": "ShareSafe demo data successfully reset to clean state."}
 
 
+@app.get("/api/adversarial/run")
+async def run_adversarial_suite():
+    """Execute scripted adversarial suite scenarios A through H."""
+    from app.adversarial.scenarios import run_all_adversarial_scenarios
+    results = run_all_adversarial_scenarios()
+    return {
+        "total": len(results),
+        "passed": sum(1 for r in results if r.passed),
+        "scenarios": [r.model_dump() for r in results],
+    }
+
+
+# ---------------------------------------------------------------------------
+# Routers Registration (P2 & P4 Modules)
+# ---------------------------------------------------------------------------
+from app.routers.incidents import router as incidents_router
+from app.routers.holds import router as holds_router
+from app.routers.notifications import router as notifications_router
+
+app.include_router(incidents_router)
+app.include_router(holds_router)
+app.include_router(notifications_router)
+
+
 # ---------------------------------------------------------------------------
 # Static files & Root
 # ---------------------------------------------------------------------------

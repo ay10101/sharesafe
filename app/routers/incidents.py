@@ -6,6 +6,7 @@ Preserves original reports immutably; disputes create separate entries.
 Safety and damage incidents trigger agent triage and precautionary safety holds.
 """
 from __future__ import annotations
+import logging
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
@@ -17,6 +18,8 @@ from app.auth.dependencies import get_current_user
 from app.core.audit import append_audit
 from app.core.holds import place_safety_hold
 from app.db.session import db_transaction, get_connection
+
+logger = logging.getLogger("sharesafe.incidents")
 
 router = APIRouter(prefix="/api/incidents", tags=["incidents"])
 
@@ -109,22 +112,43 @@ async def report_incident(
         # Trigger agent hook (with safe boundary, supporting both on_incident and handle_incident)
         try:
             from app.agent import custodian
-            context_data = {"booking_id": payload.booking_id, "description": payload.description}
+            from app.agent.contracts import Actor as AgentActor
+            agent_actor = AgentActor(id="agent:custodian", name="Custodian Agent", role="agent")
+            inc_record = {
+                "id": incident_id,
+                "resource_id": res_id,
+                "booking_id": payload.booking_id,
+                "reporter_id": reporter_id,
+                "incident_type": inc_type,
+                "description": payload.description,
+                "severity": "medium",
+                "created_at": now_ts,
+            }
+            context_data = {
+                "booking_id": payload.booking_id,
+                "description": payload.description,
+                "type": inc_type,
+            }
+            authority = getattr(custodian, "SystemAuthorityAdapter", custodian.SimpleAuthority)()
             if hasattr(custodian, "on_incident"):
                 custodian.on_incident(
                     incident_id=incident_id,
                     resource_id=res_id,
                     context=context_data,
+                    actor=agent_actor,
+                    authority=authority,
+                    incident=inc_record,
                 )
             elif hasattr(custodian, "handle_incident"):
                 custodian.handle_incident(
                     incident_id=incident_id,
-                    resource_id=res_id,
-                    context=context_data,
+                    actor=agent_actor,
+                    incident=inc_record,
+                    authority=authority,
                 )
-        except Exception:
-            # Safe stub boundary: does not break workflow if agent layer is disabled/stubbed
-            pass
+        except Exception as exc:
+            # Safe stub boundary: does not break workflow if agent layer encounters issue
+            logger.warning("Custodian agent hook warning: %s", exc)
 
         # Trigger safety hold placement
         hold_info = place_safety_hold(
@@ -181,3 +205,41 @@ async def get_incident(incident_id: str):
         return dict(row)
     finally:
         conn.close()
+
+
+@router.get("/{incident_id}/packet")
+async def get_incident_packet(
+    incident_id: str,
+    llm_enrich: bool = False,
+):
+    """
+    Generate or retrieve structured evidence packet for an incident.
+    Compiles factual timeline, upcoming reservations, and historical equipment issues.
+    """
+    conn = get_connection()
+    try:
+        row = conn.execute("SELECT * FROM incidents WHERE id = ?", (incident_id,)).fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail=f"Incident '{incident_id}' not found.")
+        inc_data = dict(row)
+    finally:
+        conn.close()
+
+    try:
+        from app.agent.custodian import handle_incident, SystemAuthorityAdapter
+        from app.agent.contracts import Actor as AgentActor
+        agent_actor = AgentActor(id="agent:custodian", name="Custodian Agent", role="agent")
+        result = handle_incident(
+            incident_id=incident_id,
+            actor=agent_actor,
+            incident=inc_data,
+            authority=SystemAuthorityAdapter(),
+            llm_enrich=llm_enrich,
+        )
+        if result.packet:
+            return result.packet.model_dump()
+        raise HTTPException(status_code=500, detail="Failed to compile evidence packet.")
+    except Exception as e:
+        logger.error("Failed to generate incident packet: %s", e)
+        raise HTTPException(status_code=500, detail=f"Error compiling evidence packet: {str(e)}")
+

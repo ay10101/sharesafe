@@ -142,13 +142,53 @@ class SimpleNotifier:
         return notice_id
 
 
+class SystemAuthorityAdapter:
+    """
+    Authority adapter bridging the central system authority (app.core.authority.execute)
+    to the Custodian Agent's AuthorityInterface protocol.
+    """
+    def execute(self, actor: Actor, action: str, args: Dict[str, Any]) -> AuthorityResult:
+        from app.contracts import Actor as CoreActor
+        from app.core import authority as core_authority
+
+        core_actor = CoreActor(
+            id=actor.id,
+            kind="agent" if actor.role == "agent" else "human",
+            role=actor.role,
+        )
+        try:
+            res = core_authority.execute(core_actor, action, args)
+            return AuthorityResult(
+                success=True,
+                action=action,
+                actor_id=actor.id,
+                details=res if isinstance(res, dict) else {},
+            )
+        except PermissionError as exc:
+            return AuthorityResult(
+                success=False,
+                action=action,
+                actor_id=actor.id,
+                denial_reason=str(exc),
+            )
+        except Exception as exc:
+            return AuthorityResult(
+                success=False,
+                action=action,
+                actor_id=actor.id,
+                denial_reason=str(exc),
+            )
+
+
 # ---------------------------------------------------------------------------
 # Custodian Agent Entry Point
 # ---------------------------------------------------------------------------
 def handle_incident(
     incident_id: str,
-    actor: Actor,
+    actor: Optional[Actor] = None,
     *,
+    resource_id: Optional[str] = None,
+    context: Optional[Dict[str, Any]] = None,
     incident: Optional[Union[Incident, Dict[str, Any]]] = None,
     authority: Optional[AuthorityInterface] = None,
     booking_service: Optional[Any] = None,
@@ -174,6 +214,9 @@ def handle_incident(
     Returns:
     - CustodianActionResult describing the workflow execution and evidence packet.
     """
+    if actor is None:
+        actor = Actor(id="agent:custodian", name="Custodian Agent", role="agent")
+
     logger.info("Custodian Agent initiated for incident '%s' by actor '%s' (%s)", incident_id, actor.id, actor.role)
     errors: List[str] = []
     audit_records: List[str] = []
@@ -227,6 +270,27 @@ def handle_incident(
         )
 
     # 3. Resolve incident record
+    if incident is None:
+        if resource_id:
+            incident = {
+                "id": incident_id,
+                "resource_id": resource_id,
+                "incident_type": (context or {}).get("type", "damage"),
+                "description": (context or {}).get("description", (context or {}).get("note", f"Incident on {resource_id}")),
+                "severity": (context or {}).get("severity", "medium"),
+                "booking_id": (context or {}).get("booking_id"),
+            }
+        else:
+            try:
+                from app.db.session import get_connection
+                conn = get_connection()
+                row = conn.execute("SELECT * FROM incidents WHERE id = ?", (incident_id,)).fetchone()
+                conn.close()
+                if row:
+                    incident = dict(row)
+            except Exception:
+                pass
+
     if incident is None:
         logger.error("Incident '%s' data not supplied.", incident_id)
         return CustodianActionResult(
@@ -310,6 +374,19 @@ def handle_incident(
             upcoming_bookings = booking_service.get_upcoming_bookings(resource_id)
         except Exception as e:
             errors.append(f"Failed to query upcoming bookings: {e}")
+    elif booking_service is None:
+        try:
+            from app.db.session import get_connection
+            conn = get_connection()
+            rows = conn.execute(
+                "SELECT id as request_id, resource_id, user_id as requester_id, start as start_date, end as end_date, status FROM bookings WHERE resource_id = ? AND status IN ('requested', 'approved', 'waitlisted')",
+                (resource_id,),
+            ).fetchall()
+            conn.close()
+            for r in rows:
+                upcoming_bookings.append(UpcomingBooking(**dict(r)))
+        except Exception:
+            pass
 
     # 5. Retrieve context: historical incidents
     historical_incidents: List[HistoricalIncident] = []
@@ -318,6 +395,19 @@ def handle_incident(
             historical_incidents = history_service.get_resource_incidents(resource_id)
         except Exception as e:
             errors.append(f"Failed to query incident history: {e}")
+    elif history_service is None:
+        try:
+            from app.db.session import get_connection
+            conn = get_connection()
+            rows = conn.execute(
+                "SELECT id as incident_id, resource_id, incident_type, description, 'medium' as severity, created_at, resolution_notes as resolution FROM incidents WHERE resource_id = ? AND id != ? ORDER BY created_at DESC",
+                (resource_id, incident_id),
+            ).fetchall()
+            conn.close()
+            for r in rows:
+                historical_incidents.append(HistoricalIncident(**dict(r)))
+        except Exception:
+            pass
 
     # 6. Build deterministic evidence packet
     packet: EvidencePacket = build_packet(
@@ -373,3 +463,35 @@ def handle_incident(
         errors=errors,
         summary=summary_text,
     )
+
+
+def on_incident(
+    incident_id: str,
+    resource_id: str,
+    context: Optional[Dict[str, Any]] = None,
+    *,
+    actor: Optional[Actor] = None,
+    authority: Optional[AuthorityInterface] = None,
+    incident: Optional[Union[Incident, Dict[str, Any]]] = None,
+    llm_enrich: bool = False,
+) -> CustodianActionResult:
+    """
+    Lifecycle and router hook invoked when a safety or damage incident occurs.
+    Coordinates evidence packet generation and precautionary holds under bounded autonomy.
+    """
+    context = context or {}
+    if actor is None:
+        actor = Actor(id="agent:custodian", name="Custodian Agent", role="agent")
+    if authority is None:
+        authority = SystemAuthorityAdapter()
+
+    return handle_incident(
+        incident_id=incident_id,
+        actor=actor,
+        resource_id=resource_id,
+        context=context,
+        incident=incident,
+        authority=authority,
+        llm_enrich=llm_enrich,
+    )
+

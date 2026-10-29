@@ -19,7 +19,9 @@ from app.agent.custodian import (
     SimpleAuditLogger,
     SimpleAuthority,
     SimpleNotifier,
+    SystemAuthorityAdapter,
     handle_incident,
+    on_incident,
 )
 from app.agent.enrichment import PacketEnrichment, enrich_packet
 from app.agent.packet import build_packet
@@ -39,7 +41,9 @@ __all__ = [
     "SimpleAuditLogger",
     "SimpleAuthority",
     "SimpleNotifier",
+    "SystemAuthorityAdapter",
     "handle_incident",
+    "on_incident",
     "PacketEnrichment",
     "enrich_packet",
     "build_packet",

@@ -255,3 +255,36 @@ def test_explicitly_injected_test_authority_succeeds():
     assert result.hold_id is not None
     assert "res-laser-cutter" in test_auth.active_holds
 
+
+def test_system_authority_adapter_integration():
+    """SystemAuthorityAdapter bridges to central authority and respects role limits."""
+    from app.agent.custodian import SystemAuthorityAdapter
+    adapter = SystemAuthorityAdapter()
+    agent_actor = Actor(id="agent:custodian", name="Custodian Agent", role="agent")
+
+    # Allowed agent action
+    res_allowed = adapter.execute(agent_actor, "place_precautionary_hold", {"resource_id": "r1", "reason": "Test hold"})
+    assert res_allowed.success is True
+    assert res_allowed.action == "place_precautionary_hold"
+
+    # Human-only action must be denied through adapter
+    res_denied = adapter.execute(agent_actor, "clear_safety_hold", {"resource_id": "r1", "note": "Trying bypass"})
+    assert res_denied.success is False
+    assert "strictly forbidden" in res_denied.denial_reason.lower() or "denied" in res_denied.denial_reason.lower()
+
+
+def test_on_incident_hook():
+    """on_incident hook coordinates evidence packet and authority hold."""
+    from app.agent.custodian import on_incident
+    result = on_incident(
+        incident_id="inc-hook-01",
+        resource_id="res-laser-cutter",
+        context={"type": "safety", "description": "High temperature alert on laser tube"},
+    )
+    assert result.processed is True
+    assert result.hold_status == "placed"
+    assert result.packet_generated is True
+    assert result.packet is not None
+    assert result.packet.resource_id == "res-laser-cutter"
+
+

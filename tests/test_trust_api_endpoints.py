@@ -180,3 +180,26 @@ def test_disputes_create_separate_incident_entries(test_client):
     types = [i["incident_type"] for i in items]
     assert "damage" in types
     assert "dispute" in types
+
+
+def test_get_incident_evidence_packet_endpoint(test_client):
+    """GET /api/incidents/{id}/packet retrieves compiled EvidencePacket."""
+    token = create_access_token(user_id="user:maya", role="borrower", name="Maya Lin")
+    headers = {"Authorization": f"Bearer {token}"}
+
+    res = test_client.post(
+        "/api/incidents",
+        json={"type": "safety", "description": "Thermal cutoff triggered during training run", "resource_id": "res-gpu-01"},
+        headers=headers,
+    )
+    assert res.status_code == 201
+    inc_id = res.json()["incident_id"]
+
+    pkt_res = test_client.get(f"/api/incidents/{inc_id}/packet")
+    assert pkt_res.status_code == 200
+    packet = pkt_res.json()
+    assert packet["incident_id"] == inc_id
+    assert packet["resource_id"] == "res-gpu-01"
+    assert "Thermal cutoff" in packet["reported_description"]
+    assert packet["summary"] != ""
+
