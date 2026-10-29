@@ -106,14 +106,22 @@ async def report_incident(
     # For safety and damage incidents: trigger custodian hook and auto-place safety hold
     hold_info = None
     if inc_type in ("safety", "damage"):
-        # Trigger agent hook (with safe boundary)
+        # Trigger agent hook (with safe boundary, supporting both on_incident and handle_incident)
         try:
-            from app.agent.custodian import on_incident
-            on_incident(
-                incident_id=incident_id,
-                resource_id=res_id,
-                context={"booking_id": payload.booking_id, "description": payload.description},
-            )
+            from app.agent import custodian
+            context_data = {"booking_id": payload.booking_id, "description": payload.description}
+            if hasattr(custodian, "on_incident"):
+                custodian.on_incident(
+                    incident_id=incident_id,
+                    resource_id=res_id,
+                    context=context_data,
+                )
+            elif hasattr(custodian, "handle_incident"):
+                custodian.handle_incident(
+                    incident_id=incident_id,
+                    resource_id=res_id,
+                    context=context_data,
+                )
         except Exception:
             # Safe stub boundary: does not break workflow if agent layer is disabled/stubbed
             pass
