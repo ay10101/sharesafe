@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+  <title>ShareSafe — Resource Trust Passport</title>
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet"/>
+  <link href="https://fonts.googleapis.com" rel="preconnect"/>
+  <link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet"/>
+  <script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+  <script>
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            display: ['Plus Jakarta Sans', 'sans-serif'],
+          },
+          colors: {
+            brand: {
+              50: '#eef2ff',
+              100: '#e0e7ff',
+              500: '#6366f1',
+              600: '#4f46e5',
+              700: '#4338ca',
+            }
+          }
+        }
+      }
+    };
+  </script>
+  <style>
+    .font-mono-code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 antialiased min-h-screen flex flex-col">
+
+  <!-- Judge Mode Top Bar -->
+  <aside aria-label="Judge Mode Controls" class="w-full bg-slate-900 text-white border-b border-slate-800 text-xs py-2.5 px-4 shadow-sm z-40">
+    <div class="max-w-[1440px] mx-auto flex flex-col md:flex-row items-center justify-between gap-3">
+      <div class="flex items-center gap-2 flex-wrap">
+        <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 font-semibold uppercase tracking-wider text-[10px]">
+          <span class="material-symbols-outlined text-[14px]">verified</span> Judge Mode
+        </span>
+        <span class="text-slate-400">Switch Persona:</span>
+        <div class="inline-flex rounded-md shadow-sm" role="group">
+          <button id="persona-maya" onclick="switchPersona('user:maya', 'borrower', 'Maya Lin')" class="px-2.5 py-1 text-xs font-medium rounded-l border border-slate-700 bg-indigo-600 text-white hover:bg-indigo-500">
+            Student (Maya)
+          </button>
+          <button id="persona-marcus" onclick="switchPersona('user:marcus', 'owner', 'Marcus Vance')" class="px-2.5 py-1 text-xs font-medium border-t border-b border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700">
+            Owner (Marcus)
+          </button>
+          <button id="persona-thorne" onclick="switchPersona('user:dr_thorne', 'inspector', 'Dr. Aris Thorne')" class="px-2.5 py-1 text-xs font-medium border-t border-b border-l border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700">
+            Inspector (Dr. Thorne)
+          </button>
+          <button id="persona-sarah" onclick="switchPersona('user:sarah', 'admin', 'Sarah Admin')" class="px-2.5 py-1 text-xs font-medium rounded-r border border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700">
+            Admin (Sarah)
+          </button>
+        </div>
+      </div>
+      <div class="flex items-center gap-3">
+        <span id="activePersonaBadge" class="text-xs text-indigo-300 font-mono">Acting as: Maya Lin (borrower)</span>
+        <button onclick="resetDemoData()" class="px-2.5 py-1 rounded bg-rose-600/30 text-rose-300 border border-rose-500/30 hover:bg-rose-600 hover:text-white transition-colors flex items-center gap-1 text-[11px] font-semibold">
+          <span class="material-symbols-outlined text-[13px]">restart_alt</span> Reset Demo Data
+        </button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Navigation Header -->
+  <header class="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-xs">
+    <div class="max-w-[1440px] mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <a href="/" class="inline-flex items-center gap-1 text-sm font-semibold text-slate-600 hover:text-indigo-600 transition-colors">
+          <span class="material-symbols-outlined text-lg">arrow_back</span> Return to Catalog
+        </a>
+        <span class="text-slate-300">/</span>
+        <span class="font-display font-bold text-slate-900 text-lg flex items-center gap-2">
+          <span class="material-symbols-outlined text-indigo-600">badge</span> Resource Passport
+        </span>
+      </div>
+      <!-- Resource Selector dropdown -->
+      <div class="flex items-center gap-2">
+        <label for="resourceSelect" class="text-xs text-slate-500 font-medium">Select Resource:</label>
+        <select id="resourceSelect" onchange="onResourceChanged(this.value)" class="text-xs rounded-md border-slate-300 py-1.5 px-3 bg-slate-50 font-medium text-slate-700 focus:ring-indigo-500 focus:border-indigo-500">
+          <option value="res-gpu-01">NVIDIA RTX 4090 Workstation</option>
+          <option value="res-camera-01">Sony FX3 Cinema Rig</option>
+          <option value="res-printer-01">Bambu Lab X1-Carbon Combo</option>
+          <option value="res-room-01">Maker Space Project Room</option>
+        </select>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content -->
+  <main class="max-w-[1440px] mx-auto px-4 sm:px-6 py-8 flex-1 w-full space-y-8">
+
+    <!-- Hero Passport Card -->
+    <section class="bg-white rounded-2xl border border-slate-200 p-6 md:p-8 shadow-sm">
+      <div class="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6 pb-6 border-b border-slate-100">
+        <div>
+          <div class="flex items-center gap-2.5 mb-2">
+            <span id="categoryBadge" class="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-600 uppercase tracking-wide">
+              Computing
+            </span>
+            <span id="bayTagBadge" class="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700">
+              Bay Tag: #GPU-POD-A
+            </span>
+            <span id="itemCodeBadge" class="text-xs font-mono text-slate-400">
+              #EQ-4090-01
+            </span>
+          </div>
+          <h1 id="resourceTitle" class="text-2xl md:text-3xl font-display font-bold text-slate-900">
+            NVIDIA RTX 4090 Workstation Pod
+          </h1>
+          <p id="resourceLocation" class="text-sm text-slate-500 mt-1 flex items-center gap-1">
+            <span class="material-symbols-outlined text-[16px]">location_on</span> Turing Hall 402, High Performance Computing Bay
+          </p>
+        </div>
+
+        <!-- Readiness Big Badge -->
+        <div class="flex flex-col items-start lg:items-end">
+          <span class="text-xs font-semibold uppercase text-slate-400 tracking-wider mb-1">Operational Readiness</span>
+          <div id="readinessStatusBadge" class="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-base font-bold shadow-xs">
+            <!-- Dynamic: READY / READY WITH CONDITIONS / NOT READY -->
+          </div>
+        </div>
+      </div>
+
+      <!-- Readiness Rule Results (Plain Language) -->
+      <div class="mt-6">
+        <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-3 flex items-center gap-1.5">
+          <span class="material-symbols-outlined text-[16px]">rule</span> Deterministic Readiness Evaluation
+        </h3>
+        <div id="readinessReasonsContainer" class="space-y-2">
+          <!-- Injected via passport.js -->
+        </div>
+      </div>
+    </section>
+
+    <!-- Two Column Grid: Eligibility & Holds -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+
+      <!-- Column 1: Eligibility & Rules -->
+      <section class="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm flex flex-col justify-between">
+        <div>
+          <div class="flex items-center gap-2 mb-4 pb-3 border-b border-slate-100">
+            <span class="material-symbols-outlined text-indigo-600">verified_user</span>
+            <h2 class="text-lg font-display font-bold text-slate-900">Eligibility & Access Policy</h2>
+          </div>
+          <dl class="grid grid-cols-2 gap-4 text-sm">
+            <div class="bg-slate-50 rounded-xl p-3 border border-slate-100">
+              <dt class="text-xs text-slate-500 font-medium">Minimum Academic Year</dt>
+              <dd id="ruleMinYear" class="text-base font-bold text-slate-900 mt-1">Year 3+</dd>
+            </div>
+            <div class="bg-slate-50 rounded-xl p-3 border border-slate-100">
+              <dt class="text-xs text-slate-500 font-medium">Max Booking Duration</dt>
+              <dd id="ruleMaxDuration" class="text-base font-bold text-slate-900 mt-1">4 Hours</dd>
+            </div>
+            <div class="bg-slate-50 rounded-xl p-3 border border-slate-100">
+              <dt class="text-xs text-slate-500 font-medium">Minimum Advance Notice</dt>
+              <dd id="ruleMinNotice" class="text-base font-bold text-slate-900 mt-1">2 Hours</dd>
+            </div>
+            <div class="bg-slate-50 rounded-xl p-3 border border-slate-100">
+              <dt class="text-xs text-slate-500 font-medium">Weekend Policy</dt>
+              <dd id="ruleWeekend" class="text-base font-bold text-slate-900 mt-1">Requires Supervisor</dd>
+            </div>
+          </dl>
+          <div class="mt-4 bg-slate-50 rounded-xl p-4 border border-slate-100">
+            <h4 class="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">Required Safety Certifications</h4>
+            <div id="ruleTrainingList" class="flex flex-wrap gap-2">
+              <span class="px-2.5 py-1 rounded-md text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
+                <span class="material-symbols-outlined text-[14px]">school</span> gpu_safety
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div class="mt-4 pt-3 border-t border-slate-100 text-xs text-slate-400">
+          Enforced server-side before request submission and approval.
+        </div>
+      </section>
+
+      <!-- Column 2: Safety Holds -->
+      <section class="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm flex flex-col justify-between">
+        <div>
+          <div class="flex items-center justify-between gap-2 mb-4 pb-3 border-b border-slate-100">
+            <div class="flex items-center gap-2">
+              <span class="material-symbols-outlined text-rose-600">front_hand</span>
+              <h2 class="text-lg font-display font-bold text-slate-900">Safety Holds & Clearances</h2>
+            </div>
+            <!-- Quick Clear Hold button for Inspector -->
+            <button id="btnQuickClearHold" onclick="showClearHoldModal()" class="hidden px-2.5 py-1 rounded bg-indigo-600 text-white text-xs font-medium hover:bg-indigo-700 transition-colors">
+              Inspect & Clear Hold
+            </button>
+          </div>
+          <div id="holdsContainer" class="space-y-3 max-h-[320px] overflow-y-auto pr-1">
+            <!-- Injected via passport.js -->
+          </div>
+        </div>
+
+        <div class="mt-4 pt-3 border-t border-slate-100 text-xs text-slate-400">
+          Only Authorized Inspectors with written resolution notes can clear safety holds.
+        </div>
+      </section>
+    </div>
+
+    <!-- Incidents Section -->
+    <section class="bg-white rounded-2xl border border-slate-200 p-6 md:p-8 shadow-sm">
+      <div class="flex items-center justify-between gap-2 mb-4 pb-3 border-b border-slate-100">
+        <div class="flex items-center gap-2">
+          <span class="material-symbols-outlined text-amber-600">warning</span>
+          <h2 class="text-lg font-display font-bold text-slate-900">Incident & Dispute Log</h2>
+        </div>
+        <span class="text-xs text-slate-400">Original reports preserved permanently; disputes recorded separately</span>
+      </div>
+      <div id="incidentsContainer" class="space-y-3">
+        <!-- Injected via passport.js -->
+      </div>
+    </section>
+
+    <!-- Usage & Handover History -->
+    <section class="bg-white rounded-2xl border border-slate-200 p-6 md:p-8 shadow-sm">
+      <div class="flex items-center justify-between gap-2 mb-4 pb-3 border-b border-slate-100">
+        <div class="flex items-center gap-2">
+          <span class="material-symbols-outlined text-indigo-600">history</span>
+          <h2 class="text-lg font-display font-bold text-slate-900">Usage & Handover Condition Trail</h2>
+        </div>
+        <span class="text-xs text-slate-400">Pre-checkout & post-return verified condition notes</span>
+      </div>
+      <div id="historyTableContainer" class="overflow-x-auto">
+        <!-- Injected via passport.js -->
+      </div>
+    </section>
+
+    <!-- Tamper-Evident Audit Chain & Verification -->
+    <section class="bg-white rounded-2xl border border-slate-200 p-6 md:p-8 shadow-sm">
+      <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-6 border-b border-slate-100">
+        <div>
+          <div class="flex items-center gap-2 mb-1">
+            <span class="material-symbols-outlined text-indigo-600">link</span>
+            <h2 class="text-xl font-display font-bold text-slate-900">Tamper-Evident Audit Chain</h2>
+          </div>
+          <p class="text-xs text-slate-500">
+            Cryptographic SHA-256 hash chaining over all state transitions: <span class="font-mono-code bg-slate-100 px-1 py-0.5 rounded text-[11px]">H = SHA256(prev_hash + canonical_json(body))</span>
+          </p>
+        </div>
+
+        <!-- Verify Chain and Demo Tamper Buttons -->
+        <div class="flex items-center gap-2 flex-wrap">
+          <button id="btnVerifyChain" onclick="runVerifyChain()" class="px-4 py-2.5 rounded-xl bg-indigo-600 text-white font-semibold text-sm hover:bg-indigo-700 shadow-sm transition-all flex items-center gap-1.5">
+            <span class="material-symbols-outlined text-[18px]">verified</span> Verify Chain
+          </button>
+          <!-- Admin demo helper: Simulate Tamper -->
+          <button id="btnSimulateTamper" onclick="runSimulateTamper()" class="px-3 py-2 rounded-xl bg-slate-100 text-slate-700 font-semibold text-xs border border-slate-200 hover:bg-rose-50 hover:text-rose-600 hover:border-rose-200 transition-colors flex items-center gap-1" title="Demo helper to demonstrate tamper detection">
+            <span class="material-symbols-outlined text-[15px]">bug_report</span> Simulate Tamper
+          </button>
+        </div>
+      </div>
+
+      <!-- Verification Result Banner -->
+      <div id="verificationResultBanner" class="hidden mt-6 p-4 rounded-xl border flex items-center gap-3">
+        <span id="verificationIcon" class="material-symbols-outlined text-2xl"></span>
+        <div>
+          <div id="verificationTitle" class="font-bold text-sm"></div>
+          <div id="verificationDetail" class="text-xs mt-0.5"></div>
+        </div>
+      </div>
+
+      <!-- Chronological Audit Timeline -->
+      <div class="mt-6">
+        <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-400 mb-4 flex items-center gap-1">
+          <span class="material-symbols-outlined text-[15px]">timeline</span> Cryptographic Block Timeline (Resource Events)
+        </h3>
+        <div id="auditTimelineContainer" class="space-y-3 font-mono-code text-xs">
+          <!-- Injected via passport.js -->
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Clear Hold Inspector Modal -->
+  <div id="clearHoldModal" class="hidden fixed inset-0 bg-slate-900/50 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-xl border border-slate-200 space-y-4">
+      <div class="flex items-center justify-between">
+        <h3 class="text-base font-bold text-slate-900 flex items-center gap-2">
+          <span class="material-symbols-outlined text-indigo-600">fact_check</span> Inspector Hold Clearance
+        </h3>
+        <button onclick="closeClearHoldModal()" class="text-slate-400 hover:text-slate-600">
+          <span class="material-symbols-outlined">close</span>
+        </button>
+      </div>
+      <p class="text-xs text-slate-500">
+        You are certifying this equipment as safe and operational. A detailed written inspection note is strictly required server-side.
+      </p>
+      <div>
+        <label for="clearingNoteInput" class="block text-xs font-semibold text-slate-700 mb-1">Written Resolution Note *</label>
+        <textarea id="clearingNoteInput" rows="3" class="w-full text-xs rounded-lg border-slate-300 p-2.5 focus:ring-indigo-500 focus:border-indigo-500" placeholder="e.g. Replaced faulty cooling fan assembly, completed thermal stress test with nominal temperatures."></textarea>
+      </div>
+      <div class="flex items-center justify-end gap-2 pt-2">
+        <button onclick="closeClearHoldModal()" class="px-3 py-1.5 text-xs font-medium text-slate-600 hover:text-slate-800">
+          Cancel
+        </button>
+        <button onclick="submitClearHold()" class="px-4 py-2 bg-indigo-600 text-white text-xs font-semibold rounded-lg hover:bg-indigo-700">
+          Submit Clearance & Restore Ready
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/passport.js"></script>
+</body>
+</html>
