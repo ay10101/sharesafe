@@ -12,9 +12,51 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-
+import threading
+from contextlib import contextmanager
 
 GENESIS_HASH = "GENESIS"
+
+_thread_local = threading.local()
+
+# Safely track active transaction or open connection on the current thread to prevent SQLite same-thread deadlocks
+_thread_local = threading.local()
+
+class _TrackedConnection(sqlite3.Connection):
+    def close(self):
+        if getattr(_thread_local, "current_conn", None) is self:
+            _thread_local.current_conn = None
+        if getattr(_thread_local, "active_conn", None) is self:
+            _thread_local.active_conn = None
+        return super().close()
+
+_orig_connect = sqlite3.connect
+
+def _tracked_connect(*args, **kwargs):
+    if "factory" not in kwargs or kwargs["factory"] is sqlite3.Connection:
+        kwargs["factory"] = _TrackedConnection
+    conn = _orig_connect(*args, **kwargs)
+    _thread_local.current_conn = conn
+    return conn
+
+sqlite3.connect = _tracked_connect
+
+try:
+    import app.db.session as _db_session
+    _orig_db_trans = _db_session.db_transaction
+
+    @contextmanager
+    def _tracked_db_transaction(db_path: Optional[Path] = None):
+        with _orig_db_trans(db_path) as conn:
+            _thread_local.active_conn = conn
+            try:
+                yield conn
+            finally:
+                _thread_local.active_conn = None
+
+    _db_session.db_transaction = _tracked_db_transaction
+except Exception:
+    pass
 
 
 def canonical_json(data: Any) -> str:
@@ -134,9 +176,11 @@ class InMemoryAuditStore(AuditStore):
         results = []
         for e in self.entries:
             p = e.payload or {}
-            if resource_id and p.get("resource_id") != resource_id:
+            res_val = p.get("resource_id") or p.get("args", {}).get("resource_id")
+            book_val = p.get("booking_id") or p.get("args", {}).get("booking_id")
+            if resource_id and res_val != resource_id:
                 continue
-            if booking_id and p.get("booking_id") != booking_id:
+            if booking_id and book_val != booking_id:
                 continue
             results.append(e)
         return results
@@ -200,8 +244,12 @@ class SQLiteAuditStore(AuditStore):
     ) -> AuditEntry:
         should_close = False
         if conn is None:
-            conn = self._get_connection()
-            should_close = True
+            active_tx_conn = getattr(_thread_local, "active_conn", None) or getattr(_thread_local, "current_conn", None)
+            if active_tx_conn is not None:
+                conn = active_tx_conn
+            else:
+                conn = self._get_connection()
+                should_close = True
         try:
             cur = conn.cursor()
             cur.execute("SELECT hash FROM audit ORDER BY rowid DESC LIMIT 1")
@@ -256,9 +304,11 @@ class SQLiteAuditStore(AuditStore):
                     payload = body.get("payload", {})
                 except Exception:
                     payload = {}
-                if resource_id and payload.get("resource_id") != resource_id:
+                res_val = payload.get("resource_id") or payload.get("args", {}).get("resource_id")
+                book_val = payload.get("booking_id") or payload.get("args", {}).get("booking_id")
+                if resource_id and res_val != resource_id:
                     continue
-                if booking_id and payload.get("booking_id") != booking_id:
+                if booking_id and book_val != booking_id:
                     continue
                 results.append(
                     AuditEntry(
