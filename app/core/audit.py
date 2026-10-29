@@ -78,7 +78,9 @@ class AuditEntry:
 
 class AuditStore:
     """Abstract base interface for audit storage."""
-    def append(self, actor_id: str, action: str, payload: dict) -> AuditEntry:
+    def append(
+        self, actor_id: str, action: str, payload: dict, conn: Optional[sqlite3.Connection] = None
+    ) -> AuditEntry:
         raise NotImplementedError
 
     def get_all(
@@ -101,7 +103,9 @@ class InMemoryAuditStore(AuditStore):
     def __init__(self):
         self.entries: List[AuditEntry] = []
 
-    def append(self, actor_id: str, action: str, payload: dict) -> AuditEntry:
+    def append(
+        self, actor_id: str, action: str, payload: dict, conn: Optional[sqlite3.Connection] = None
+    ) -> AuditEntry:
         prev_hash = self.entries[-1].hash if self.entries else GENESIS_HASH
         ts = datetime.now(timezone.utc).isoformat()
         body = {
@@ -191,8 +195,13 @@ class SQLiteAuditStore(AuditStore):
         from app.db.session import get_connection
         return get_connection()
 
-    def append(self, actor_id: str, action: str, payload: dict) -> AuditEntry:
-        conn = self._get_connection()
+    def append(
+        self, actor_id: str, action: str, payload: dict, conn: Optional[sqlite3.Connection] = None
+    ) -> AuditEntry:
+        should_close = False
+        if conn is None:
+            conn = self._get_connection()
+            should_close = True
         try:
             cur = conn.cursor()
             cur.execute("SELECT hash FROM audit ORDER BY rowid DESC LIMIT 1")
@@ -217,7 +226,8 @@ class SQLiteAuditStore(AuditStore):
                 """,
                 (entry_id, prev_hash, body_json, h, ts, actor_id, action),
             )
-            conn.commit()
+            if should_close:
+                conn.commit()
             return AuditEntry(
                 entry_id=entry_id,
                 actor=actor_id,
@@ -228,7 +238,8 @@ class SQLiteAuditStore(AuditStore):
                 entry_hash=h,
             )
         finally:
-            conn.close()
+            if should_close:
+                conn.close()
 
     def get_all(
         self, resource_id: Optional[str] = None, booking_id: Optional[str] = None
@@ -331,7 +342,7 @@ class SQLiteAuditStore(AuditStore):
             conn.close()
 
 
-# Default store: SQLiteAuditStore if DB exists/available, fallback gracefully
+# Default store: SQLiteAuditStore
 _active_store: AuditStore = SQLiteAuditStore()
 
 
@@ -345,22 +356,15 @@ def get_audit_store() -> AuditStore:
     return _active_store
 
 
-def append_audit(actor_id: str, action: str, payload: dict) -> str:
+def append_audit(
+    actor_id: str, action: str, payload: dict, conn: Optional[sqlite3.Connection] = None
+) -> str:
     """
     Append an entry to the tamper-evident audit log and return the entry hash.
     Signature matches shared contract: append_audit(actor_id, action, payload) -> str
     """
-    try:
-        entry = _active_store.append(actor_id, action, payload)
-        return entry.hash
-    except Exception:
-        # Fallback to in-memory if DB table not yet created
-        if not isinstance(_active_store, InMemoryAuditStore):
-            in_mem = InMemoryAuditStore()
-            set_audit_store(in_mem)
-            entry = in_mem.append(actor_id, action, payload)
-            return entry.hash
-        raise
+    entry = _active_store.append(actor_id, action, payload, conn=conn)
+    return entry.hash
 
 
 def verify_chain() -> Dict[str, Any]:
