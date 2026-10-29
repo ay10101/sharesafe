@@ -142,3 +142,4 @@ CREATE TABLE IF NOT EXISTS audit (
     action TEXT NOT NULL
 );
 """
+

@@ -29,3 +29,4 @@ EXPOSE 8000
 
 # Entrypoint script: seed DB if missing, then start uvicorn
 CMD ["sh", "-c", "python -m app.db.seed && uvicorn app.main:app --host 0.0.0.0 --port 8000"]
+

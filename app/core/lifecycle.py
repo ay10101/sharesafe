@@ -343,6 +343,24 @@ def transition_booking(
 
         # Handle specific target states
         if target_status == BookingStatus.APPROVED:
+            # An owner cannot silently approve around an active safety hold
+            res_row = conn.execute(
+                "SELECT name, status, readiness_state FROM resources WHERE id = ?",
+                (booking["resource_id"],)
+            ).fetchone()
+            if res_row and (res_row[1] == "not_ready" or res_row[2] == "not_ready"):
+                raise ResourceUnavailableError(
+                    f"Cannot approve: Resource '{res_row[0]}' is currently Not Ready. Clear safety holds before approval."
+                )
+            hold = conn.execute(
+                "SELECT id, reason FROM holds WHERE resource_id = ? AND status = 'active' LIMIT 1",
+                (booking["resource_id"],)
+            ).fetchone()
+            if hold:
+                raise ResourceUnavailableError(
+                    f"Cannot approve: Resource is under active safety hold '{hold[0]}': {hold[1]}. Must be cleared by Inspector first."
+                )
+
             updates["approved_at"] = now_ts
             if owner_reason:
                 updates["owner_reason"] = owner_reason
@@ -360,6 +378,24 @@ def transition_booking(
             _revert_resource_if_unoccupied(conn, booking["resource_id"], exclude_booking_id=booking_id)
 
         elif target_status == BookingStatus.CHECKED_IN:
+            # Active safety hold check: cannot dispatch equipment if under hold or not_ready
+            res_row = conn.execute(
+                "SELECT name, status, readiness_state FROM resources WHERE id = ?",
+                (booking["resource_id"],)
+            ).fetchone()
+            if res_row and (res_row[1] == "not_ready" or res_row[2] == "not_ready"):
+                raise ResourceUnavailableError(
+                    f"Cannot check out: Resource '{res_row[0]}' is currently Not Ready. Equipment cannot be dispatched."
+                )
+            hold = conn.execute(
+                "SELECT id, reason FROM holds WHERE resource_id = ? AND status = 'active' LIMIT 1",
+                (booking["resource_id"],)
+            ).fetchone()
+            if hold:
+                raise ResourceUnavailableError(
+                    f"Cannot check out: Resource is under active safety hold '{hold[0]}': {hold[1]}. Equipment locked until cleared."
+                )
+
             # Condition note is MANDATORY at check-in
             note = (condition_note or "").strip()
             if not note:
@@ -470,3 +506,4 @@ def _revert_resource_if_unoccupied(conn, resource_id: str, exclude_booking_id: O
         conn.execute("UPDATE resources SET status = ? WHERE id = ?", (res_stat, resource_id))
     else:
         conn.execute("UPDATE resources SET status = 'available' WHERE id = ?", (resource_id,))
+

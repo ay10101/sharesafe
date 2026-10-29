@@ -422,6 +422,8 @@ async def approve_request(
             conn.close()
     except IllegalTransitionError as e:
         raise HTTPException(status_code=409, detail=str(e))
+    except ResourceUnavailableError as e:
+        raise HTTPException(status_code=409, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
@@ -446,6 +448,8 @@ async def reject_request(
         finally:
             conn.close()
     except IllegalTransitionError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except ResourceUnavailableError as e:
         raise HTTPException(status_code=409, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -473,6 +477,8 @@ async def checkout_request(
         finally:
             conn.close()
     except IllegalTransitionError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except ResourceUnavailableError as e:
         raise HTTPException(status_code=409, detail=str(e))
     except ConditionNoteRequiredError as e:
         raise HTTPException(status_code=422, detail=str(e))
@@ -507,6 +513,8 @@ async def return_request(
             conn.close()
     except IllegalTransitionError as e:
         raise HTTPException(status_code=409, detail=str(e))
+    except ResourceUnavailableError as e:
+        raise HTTPException(status_code=409, detail=str(e))
     except ConditionNoteRequiredError as e:
         raise HTTPException(status_code=422, detail=str(e))
     except ValueError as e:
@@ -531,6 +539,8 @@ async def cancel_request(
         finally:
             conn.close()
     except IllegalTransitionError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except ResourceUnavailableError as e:
         raise HTTPException(status_code=409, detail=str(e))
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))

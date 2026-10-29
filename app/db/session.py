@@ -66,3 +66,4 @@ def db_connection(db_path: Optional[Path] = None) -> Generator[sqlite3.Connectio
         yield conn
     finally:
         conn.close()
+

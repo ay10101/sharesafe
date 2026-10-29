@@ -90,3 +90,4 @@ require_borrower = require_roles(["borrower", "owner", "inspector", "admin"])
 require_owner = require_roles(["owner", "admin"])
 require_inspector = require_roles(["inspector", "admin"])
 require_admin = require_roles(["admin"])
+

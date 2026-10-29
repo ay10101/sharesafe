@@ -314,3 +314,4 @@ def test_concurrent_double_booking_race(test_db):
     # Exactly one failed with SlotOverlapError
     assert len(errors) == 1, f"Expected exactly 1 error, got {len(errors)}"
     assert isinstance(errors[0], SlotOverlapError)
+
