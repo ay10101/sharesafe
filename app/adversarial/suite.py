@@ -27,7 +27,7 @@ import json
 import logging
 import threading
 from dataclasses import asdict, dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timezone, timedelta
 from typing import Any, Callable, Dict, List, Optional
 
 from app.contracts import (
@@ -87,12 +87,13 @@ def test_prompt_injection() -> AdversarialTestResult:
     Test 1: Malicious prompt injection inside justification text.
     Verifies the engine output is 100% identical and that the injection cannot force approval.
     """
+    now = datetime.now(timezone.utc)
     normal_req = RequestCtx(
         user=UserCtx(id="u1", role="borrower", year=1, training=[]), # Underqualified
         resource_id="res-gpu-01",
-        start=datetime.utcnow(),
-        end=datetime.utcnow() + timedelta(hours=2),
-        created_at=datetime.utcnow(),
+        start=now,
+        end=now + timedelta(hours=2),
+        created_at=now,
         justification="Legitimate academic project needing computation.",
     )
 
