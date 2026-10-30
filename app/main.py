@@ -646,10 +646,15 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
 @app.get("/")
+@app.get("/api/index.py")
 async def serve_index():
-    index = STATIC_DIR / "index.html"
-    if index.exists():
-        return FileResponse(index)
+    for candidate in [
+        BASE_DIR / "public" / "index.html",
+        STATIC_DIR / "index.html",
+        BASE_DIR / "static" / "index.html",
+    ]:
+        if candidate.exists():
+            return FileResponse(candidate)
     return JSONResponse({"status": "ShareSafe API online. Visit /docs for the API explorer."})
 
 
