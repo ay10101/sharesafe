@@ -10,3 +10,4 @@ services:
         value: 3.11.9
       - key: DATABASE_PATH
         value: ./data/sharesafe.db
+

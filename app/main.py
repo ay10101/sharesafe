@@ -78,8 +78,16 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 STATIC_DIR = BASE_DIR / "static"
 STATIC_DIR.mkdir(parents=True, exist_ok=True)
 
-# Ensure DB initialized on startup
+# Ensure DB initialized on startup, auto-seeding if empty
 init_db()
+try:
+    _conn = get_connection()
+    _user_count = _conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+    _conn.close()
+    if _user_count == 0:
+        seed_database()
+except Exception as _e:
+    logger.warning("Auto-seed error on startup: %s", _e)
 
 
 # ---------------------------------------------------------------------------
