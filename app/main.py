@@ -654,6 +654,7 @@ async def serve_index():
 
 
 @app.get("/health")
+@app.get("/api/health")
 async def health():
     conn = get_connection()
     try:
