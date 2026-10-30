@@ -17,9 +17,15 @@ def get_db_path() -> Path:
     env_path = os.getenv("DATABASE_PATH")
     if env_path:
         p = Path(env_path)
+    elif os.getenv("VERCEL"):
+        p = Path("/tmp/sharesafe.db")
     else:
         p = DEFAULT_DB_PATH
-    p.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        p.parent.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        p = Path("/tmp/sharesafe.db")
+        p.parent.mkdir(parents=True, exist_ok=True)
     return p
 
 def get_connection(db_path: Optional[Path] = None) -> sqlite3.Connection:
